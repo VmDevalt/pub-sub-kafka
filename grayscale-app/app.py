@@ -1,9 +1,10 @@
 from PIL import Image, ImageOps
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, Producer, KafkaError
 import json
 import os
 from time import sleep
 import logging
+
 OUT_FOLDER = '/processed/grayscale/'
 NEW = '_grayscale'
 IN_FOLDER = "/appdata/static/uploads/"
@@ -21,8 +22,12 @@ def create_grayscale(path_file):
     name, ext = os.path.splitext(filename)
     gray_image.save(output_folder + name + NEW + ext)
 
-#sleep(30)
-### Consumer
+
+p = Producer({
+    'bootstrap.servers': 'kafka1:19091,kafka2:19092,kafka3:19093',
+    'client.id': 'grayscale-producer'
+})
+
 c = Consumer({
     'bootstrap.servers': 'kafka1:19091,kafka2:19092,kafka3:19093',
     'group.id': 'grayscale-group',
@@ -33,7 +38,6 @@ c = Consumer({
 })
 
 c.subscribe(['image'])
-#{"timestamp": 1649288146.3453217, "new_file": "9PKAyoN.jpeg"}
 
 try:
     while True:
@@ -44,8 +48,18 @@ try:
             data = json.loads(msg.value())
             filename = data['new_file']
             logging.warning(f"READING {filename}")
+            
             create_grayscale(IN_FOLDER + filename)
-            logging.warning (f"ENDING {filename}")
+            logging.warning(f"ENDING {filename}")
+            
+            mensagem = {
+                "arquivo": filename,
+                "operacao": "convertido para preto e branco"
+            }
+            p.produce('notificacao', value=json.dumps(mensagem).encode('utf-8'))
+            p.flush()
+            logging.warning(f"NOTIFICACAO ENVIADA para {filename}")
+            
         elif msg.error().code() == KafkaError._PARTITION_EOF:
             logging.warning('End of partition reached {0}/{1}'
                   .format(msg.topic(), msg.partition()))
